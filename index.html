@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>適性検査型体験会 予約者集計</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* レイアウト: 1列の作業画面。上から ファイル投入 → 出力設定 → 集計結果 → 保存 */
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --ink:#1b2431; --muted:#586577; --line:#d6dde6;
+  --accent:#2a4d9b; --accent-ink:#ffffff; --accent-soft:#e6ecf8;
+  --ok:#1d7a4b; --ok-soft:#e3f3ea; --warn:#8a5200; --warn-soft:#fbf0dc; --err:#a62b2b; --err-soft:#fbe6e6;
+  --font:'Hiragino Sans','Yu Gothic UI','Yu Gothic',Meiryo,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171f; --surface:#1b222d; --ink:#e7ecf3; --muted:#9aa7b8; --line:#2f3a49;
+  --accent:#8fb0f5; --accent-ink:#0f1a30; --accent-soft:#222f4a;
+  --ok:#74d3a1; --ok-soft:#1b3a2c; --warn:#f0c068; --warn-soft:#3a2d12; --err:#f09a9a; --err-soft:#3d2020; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171f; --surface:#1b222d; --ink:#e7ecf3; --muted:#9aa7b8; --line:#2f3a49;
+  --accent:#8fb0f5; --accent-ink:#0f1a30; --accent-soft:#222f4a;
+  --ok:#74d3a1; --ok-soft:#1b3a2c; --warn:#f0c068; --warn-soft:#3a2d12; --err:#f09a9a; --err-soft:#3d2020; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.7;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+.wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1{font-size:22px;line-height:1.4;margin:0;font-weight:700;text-wrap:balance}
+.lead{margin:4px 0 0;color:var(--muted);font-size:14px}
+section{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 20px;min-width:0}
+h2{font-size:14px;margin:0 0 12px;font-weight:700;letter-spacing:.04em}
+#drop{border:2px dashed var(--line);border-radius:10px;padding:26px 16px;text-align:center;cursor:pointer;background:var(--bg);transition:border-color .15s,background .15s}
+#drop.over{border-color:var(--accent);background:var(--accent-soft)}
+#drop:focus-visible,button:focus-visible,summary:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+#drop strong{display:block;font-size:16px}
+#drop span{color:var(--muted);font-size:13px}
+.slots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:14px}
+.slot{border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.slot .k{font-size:12px;color:var(--muted)}
+.slot .v{font-size:13px;overflow-wrap:anywhere}
+.slot.ok{border-color:var(--ok);background:var(--ok-soft)}
+.slot.ok .k{color:var(--ok);font-weight:700}
+.opts{display:flex;flex-direction:column;gap:10px}
+.opts label{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.opts input[type=checkbox]{width:18px;height:18px;margin-top:4px;accent-color:var(--accent)}
+.opts small{display:block;color:var(--muted);font-size:12.5px;line-height:1.5}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+.stat{border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+.stat b{display:block;font-size:24px;line-height:1.2;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted)}
+.notes{margin:14px 0 0;display:flex;flex-direction:column;gap:8px}
+.note{border-radius:8px;padding:8px 12px;font-size:13.5px;overflow-wrap:anywhere}
+.note.warn{background:var(--warn-soft);color:var(--warn)}
+.note.err{background:var(--err-soft);color:var(--err)}
+details{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+summary{cursor:pointer;font-weight:700;font-size:14px}
+.chg h3{font-size:13px;margin:14px 0 4px;color:var(--muted)}
+.chg ul{margin:0;padding-left:1.2em;font-size:13.5px}
+.chg li{overflow-wrap:anywhere}
+.btn{font:inherit;font-weight:700;background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:11px 22px;cursor:pointer}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent);padding:6px 14px;font-weight:500}
+.msg{font-size:13.5px;color:var(--muted)}
+.steps{margin:0;padding-left:1.3em;color:var(--muted);font-size:13.5px}
+@media (max-width:560px){.slots{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){#drop{transition:none}}
+</style>
+
+</head><body>
+<div class="wrap">
+  <header>
+    <h1>適性検査型体験会 予約者集計</h1>
+    <p class="lead">予約者リスト・集計用紙・今までの説明会参加者一覧の3つを、まとめてここへドラッグしてください。</p>
+    <p class="lead">読み込んだExcelは、お使いの端末のブラウザの中だけで処理します。外部のサーバーへ送信・保存されることはありません。</p>
+  </header>
+
+  <section>
+    <h2>ファイル</h2>
+    <div id="drop" tabindex="0" role="button" aria-label="Excelファイルを選択またはドロップ">
+      <strong>Excelを3つまとめてドロップ</strong>
+      <span>クリックして選ぶこともできます（ファイル名は自動で判別します）</span>
+      <input id="file" type="file" accept=".xlsx" multiple hidden>
+    </div>
+    <div class="slots" id="slots"></div>
+    <div class="notes" id="fileNotes"></div>
+  </section>
+
+  <section>
+    <h2>出力する内容</h2>
+    <div class="opts">
+      <label><input type="checkbox" id="optSorted"><span>フリガナ順シートを出す<small>集計用紙の申込者シートを並べ替えた別シートです。人数カウント欄もそのまま使えます。</small></span></label>
+      <label><input type="checkbox" id="optMeibo"><span>名簿シートを出す<small>フリガナ順に並べた名簿の形式です。受験番号はイベント申込番号のハイフン以下5桁です。</small></span></label>
+      <div class="row"><span class="msg">氏名・ふりがなの姓名の間</span>
+        <select id="spacing" aria-label="姓名の間"><option value="full">全角スペース</option><option value="half">半角スペース</option><option value="none">なし</option></select></div>
+    </div>
+  </section>
+
+  <section id="result" hidden>
+    <h2>集計結果</h2>
+    <div class="stats" id="stats"></div>
+    <div class="notes" id="warnings"></div>
+    <details id="chgBox"><summary>変更一覧を見る</summary><div class="chg" id="chg"></div></details>
+  </section>
+
+  <section>
+    <div class="row">
+      <button class="btn" id="save" disabled>集計済みExcelを保存</button>
+      <span class="msg" id="saveMsg">3つのファイルが揃うと保存できます。</span>
+    </div>
+    <ol class="steps" style="margin-top:14px">
+      <li>予約者リストの内容を集計用紙へ反映し、新規欄に参加者一覧にない人へ1を入れます。</li>
+      <li>集計用紙にあって予約者リストにない人は、キャンセルシートへ移して元の一覧から消します（№が「電話」の行は残します）。</li>
+    </ol>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script>
+/* 適性検査型体験会 予約者集計 コア処理 (ExcelJS互換のワークシートAPIだけを使用) */
+const Core = (function () {
+  'use strict';
+
+  const FIELDS = ['name', 'kana', 'sex', 'grade', 'jukuCode', 'jukuName', 'kobetsu', 'pref', 'city', 'school'];
+  const FIELD_LABEL = { name: '氏名', kana: 'ふりがな', sex: '性別', grade: '学年', jukuCode: '塾コード', jukuName: '塾名', kobetsu: '個別相談', pref: '都道府県', city: '市区町村', school: '在籍小学校' };
+  const SHEET_SORTED = 'フリガナ順';
+  const SHEET_MEIBO = '名簿';
+  const SHEET_CANCEL = 'キャンセル';
+
+  /* ---------- 基本ヘルパー ---------- */
+  function tx(v) {
+    if (v == null) return '';
+    if (v instanceof Date) return v;
+    if (typeof v === 'object') {
+      if (v.richText) return v.richText.map(t => t.text).join('');
+      if ('result' in v) return tx(v.result);
+      if (v.text != null) return String(v.text);
+      return '';
+    }
+    return v;
+  }
+  function str(v) { const t = tx(v); return t instanceof Date ? '' : String(t).trim(); }
+  function norm(s) { return String(s == null ? '' : s).normalize('NFKC').replace(/[\s　]+/g, ''); }
+  function toKata(s) { return s.replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60)); }
+  function kanaKey(s) { return toKata(norm(s)); }
+  function eq(a, b) { return String(a == null ? '' : a) === String(b == null ? '' : b); }
+  function cell(ws, r, c) { return ws.getCell(r, c); }
+  function val(ws, r, c) { const t = tx(cell(ws, r, c).value); return t; }
+  function clone(o) { return o == null ? o : JSON.parse(JSON.stringify(o)); }
+
+  /* ---------- フリガナ順の比較 (濁点・半濁点無視 → 同読みは 清音<濁点<半濁点) ---------- */
+  const SMALL = { 'ァ': 'ア', 'ィ': 'イ', 'ゥ': 'ウ', 'ェ': 'エ', 'ォ': 'オ', 'ッ': 'ツ', 'ャ': 'ヤ', 'ュ': 'ユ', 'ョ': 'ヨ', 'ヮ': 'ワ', 'ヵ': 'カ', 'ヶ': 'ケ' };
+  function kanaParts(ch) {
+    const d = ch.normalize('NFD');
+    let base = d[0];
+    let lv = 0;
+    if (d.indexOf('゙') >= 0) lv = 1; else if (d.indexOf('゚') >= 0) lv = 2;
+    let small = 0;
+    if (SMALL[base]) { base = SMALL[base]; small = 1; }
+    return [base, lv, small];
+  }
+  function kanaTokens(s) {
+    const t = toKata(String(s || '').normalize('NFKC')).split(/[\s　]+/).filter(Boolean);
+    return t.map(w => {
+      const b = [], l = [], sm = [];
+      for (const ch of Array.from(w)) { const p = kanaParts(ch); b.push(p[0].codePointAt(0)); l.push(p[1]); sm.push(p[2]); }
+      return { b, l, sm };
+    });
+  }
+  function cmpArr(a, b) {
+    const n = Math.min(a.length, b.length);
+    for (let i = 0; i < n; i++) if (a[i] !== b[i]) return a[i] - b[i];
+    return a.length - b.length;
+  }
+  function cmpKana(a, b) {
+    const ta = kanaTokens(a), tb = kanaTokens(b);
+    const n = Math.max(ta.length, tb.length);
+    const E = { b: [], l: [], sm: [] };
+    for (const k of ['b', 'l', 'sm']) {
+      for (let i = 0; i < n; i++) {
+        const x = ta[i] || E, y = tb[i] || E;
+        const r = cmpArr(x[k], y[k]);
+        if (r) return r;
+      }
+    }
+    return 0;
+  }
+  function kanaHead(s) {
+    const t = toKata(String(s || '').normalize('NFKC')).replace(/[\s　]+/g, '');
+    if (!t) return '';
+    return kanaParts(Array.from(t)[0])[0];
+  }
+  function sortRows(rows) {
+    const named = [], blank = [];
+    rows.forEach((r, i) => { r._i = i; (r.vals.name !== '' && r.vals.name != null ? named : blank).push(r); });
+    named.sort((a, b) => {
+      const ka = a.vals.kana || a.vals.name, kb = b.vals.kana || b.vals.name;
+      const hasA = !!a.vals.kana, hasB = !!b.vals.kana;
+      if (hasA !== hasB) return hasA ? -1 : 1;
+      return cmpKana(ka, kb) || (a._i - b._i);
+    });
+    return { named, blank };
+  }
+
+  /* ---------- 表の見出し検出 ---------- */
+  const DEFS = {
+    no: l => norm(l).toLowerCase() === 'no',
+    isNew: l => l === '新規',
+    name: l => l === '氏名',
+    kana: l => /^(ふりがな|フリガナ)$/.test(l),
+    sex: l => l === '性別',
+    grade: l => l === '学年',
+    jukuCode: l => l === '塾コード',
+    jukuName: l => l.indexOf('塾名') === 0,
+    kobetsu: l => l.indexOf('個別') === 0,
+    pref: l => l === '都道府県',
+    city: l => l === '市区町村',
+    school: l => l.indexOf('在籍小学校') === 0
+  };
+  function findTable(ws) {
+    const maxR = Math.min(ws.rowCount, 12);
+    const maxC = Math.min(Math.max(ws.columnCount, 1), 40);
+    for (let r = 1; r <= maxR; r++) {
+      const cols = {};
+      for (let c = 1; c <= maxC; c++) {
+        const l = str(val(ws, r, c));
+        if (!l) continue;
+        for (const k of Object.keys(DEFS)) if (cols[k] == null && DEFS[k](l)) cols[k] = c;
+      }
+      if (cols.name && cols.kana && cols.no) {
+        const missing = Object.keys(DEFS).filter(k => !cols[k]);
+        return { hr: r, cols, missing };
+      }
+    }
+    return null;
+  }
+
+  /* ---------- 予約者リスト ---------- */
+  function readApps(ws, spacing) {
+    const head = {};
+    for (let c = 1; c <= ws.columnCount; c++) { const l = str(val(ws, 1, c)); if (l && head[l] == null) head[l] = c; }
+    const g = (r, k) => (head[k] ? val(ws, r, head[k]) : '');
+    const gs = (r, k) => str(g(r, k));
+    const sp = spacing === 'half' ? ' ' : spacing === 'none' ? '' : '　';
+    const apps = [], skipped = [];
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const id = gs(r, 'イベント申込番号');
+      const sei = gs(r, 'お子様氏名(漢字)（姓）'), mei = gs(r, 'お子様氏名(漢字)（名）');
+      if (!id && !sei && !mei) continue;
+      const cancelFlag = gs(r, 'キャンセル');
+      const name = [sei, mei].filter(Boolean).join(sp);
+      const kana = [gs(r, 'お子様氏名(カナ)（姓）'), gs(r, 'お子様氏名(カナ)（名）')].filter(Boolean).join(sp);
+      if (cancelFlag && !/^0|未キャンセル/.test(cancelFlag)) { skipped.push({ id, name }); continue; }
+      let juku = gs(r, '塾名称'), jukuCode = gs(r, '塾コード');
+      const jn = norm(juku);
+      if (jn === '通塾なし') { juku = ''; jukuCode = ''; }
+      else if (jn.indexOf('その他') === 0) { jukuCode = ''; juku = gs(r, '塾名称その他'); }
+      let school = gs(r, '出身校名称');
+      if (norm(school).indexOf('その他') === 0) school = gs(r, '出身校名称その他');
+      const gm = norm(gs(r, '学年')).match(/(\d+)/);
+      const dateV = g(r, '開催日(From)');
+      apps.push({
+        id, examNo: id.indexOf('-') >= 0 ? id.slice(id.lastIndexOf('-') + 1) : id,
+        nameKey: norm(sei + mei), kanaKey: kanaKey(gs(r, 'お子様氏名(カナ)（姓）') + gs(r, 'お子様氏名(カナ)（名）')),
+        start: gs(r, 'イベント開始時間'), date: dateV instanceof Date ? dateV : null,
+        vals: {
+          name, kana, sex: gs(r, '性別'), grade: gm ? Number(gm[1]) : gs(r, '学年'),
+          jukuCode, jukuName: juku, kobetsu: gs(r, '個別相談は希望されますか'),
+          pref: gs(r, '都道府県'), city: gs(r, '市区町村'), school
+        }
+      });
+    }
+    apps.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    return { apps, skipped };
+  }
+
+  /* ---------- 参加者一覧 ---------- */
+  function readParticipants(ws) {
+    const head = {};
+    for (let c = 1; c <= ws.columnCount; c++) { const l = str(val(ws, 1, c)); if (l && head[l] == null) head[l] = c; }
+    const names = new Set(), kanas = new Set();
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const sei = str(val(ws, r, head['姓'])), mei = str(val(ws, r, head['名']));
+      const ks = str(val(ws, r, head['セイ'])), km = str(val(ws, r, head['メイ']));
+      if (sei || mei) names.add(norm(sei + mei));
+      if (ks || km) kanas.add(kanaKey(ks + km));
+    }
+    return { names, kanas, count: Math.max(names.size, kanas.size) };
+  }
+
+  /* ---------- 集計用紙の処理本体 ---------- */
+  function sheetsOf(wb) { return wb.worksheets.slice(); }
+  function isAux(name) { return name.indexOf(SHEET_CANCEL) >= 0 || name === SHEET_SORTED || name === SHEET_MEIBO; }
+
+  function process(wb, apps, participants, opts) {
+    opts = opts || {};
+    const plan = { added: [], updated: [], cancelled: [], phone: [], warnings: [], newCount: 0 };
+
+    // 旧版の出力シートは作り直すので外す
+    for (const ws of sheetsOf(wb)) if (ws.name === SHEET_SORTED || ws.name === SHEET_MEIBO) wb.removeWorksheet(ws.id);
+
+    let main = null, tbl = null;
+    for (const ws of sheetsOf(wb)) {
+      if (isAux(ws.name)) continue;
+      const t = findTable(ws);
+      if (t) { main = ws; tbl = t; break; }
+    }
+    if (!main) throw new Error('集計用紙に「№・氏名・ふりがな」の見出し行が見つかりません。');
+    if (tbl.missing.length) {
+      const lab = { isNew: '新規', sex: '性別', grade: '学年', jukuCode: '塾コード', jukuName: '塾名', kobetsu: '個別相談', pref: '都道府県', city: '市区町村', school: '在籍小学校' };
+      throw new Error('集計用紙の見出しが足りません: ' + tbl.missing.map(k => lab[k] || k).join('、'));
+    }
+    const C = tbl.cols, hr = tbl.hr, ds = hr + 1;
+    const colKeys = ['no', 'isNew'].concat(FIELDS);
+
+    // 行の取り込み
+    let dataEnd = hr;
+    for (let r = ds; r <= main.rowCount; r++) {
+      if (str(val(main, r, C.no)) !== '' || str(val(main, r, C.name)) !== '') dataEnd = r;
+    }
+    const rows = [];
+    for (let r = ds; r <= dataEnd; r++) {
+      const vals = {};
+      for (const k of colKeys) {
+        const v = val(main, r, C[k]);
+        vals[k] = v instanceof Date ? '' : v;
+      }
+      rows.push({ row: r, vals, examNo: '', touched: false, phone: str(vals.no).indexOf('電話') >= 0 });
+    }
+    const named = rows.filter(x => str(x.vals.name) !== '');
+    const lastUsed = named.length ? named[named.length - 1].row : hr;
+
+    // 予約者の重複除去
+    const seen = new Map(), uniq = [];
+    for (const a of apps) {
+      const k = a.nameKey + '|' + a.kanaKey;
+      if (seen.has(k)) { plan.warnings.push('予約者リストに同じ名前が重複: ' + a.vals.name + '（' + a.id + ' は ' + seen.get(k) + ' と重複のため1件にまとめました）'); continue; }
+      seen.set(k, a.id); uniq.push(a);
+    }
+    const byName = new Map(), byKana = new Map();
+    for (const a of uniq) {
+      if (a.nameKey) { if (!byName.has(a.nameKey)) byName.set(a.nameKey, []); byName.get(a.nameKey).push(a); }
+      if (a.kanaKey) { if (!byKana.has(a.kanaKey)) byKana.set(a.kanaKey, []); byKana.get(a.kanaKey).push(a); }
+    }
+    const used = new Set();
+    function find(nk, kk) {
+      let l = (byName.get(nk) || []).find(a => !used.has(a));
+      if (l) return { a: l, kanaOnly: false };
+      l = (byKana.get(kk) || []).find(a => !used.has(a));
+      if (l) return { a: l, kanaOnly: true };
+      return null;
+    }
+    function isNewPerson(name, kana) {
+      const nk = norm(name), kk = kanaKey(kana);
+      if (participants.names.has(nk)) return '';
+      if (kk && participants.kanas.has(kk)) { plan.warnings.push('「' + name + '」は漢字が参加者一覧と一致しませんが、読みが一致したため新規にしていません'); return ''; }
+      return 1;
+    }
+
+    // 既存行を予約者リストと照合
+    const toCancel = [];
+    for (const x of named) {
+      const f = find(norm(x.vals.name), kanaKey(x.vals.kana));
+      if (f) {
+        used.add(f.a);
+        if (f.kanaOnly) plan.warnings.push('「' + x.vals.name + '」は氏名が一致せず、読みの一致で予約者リストの「' + f.a.vals.name + '」と同一人物として更新しました');
+        const diffs = [];
+        for (const k of FIELDS) if (!eq(str(x.vals[k]), str(f.a.vals[k]))) diffs.push(FIELD_LABEL[k] + ': ' + (str(x.vals[k]) || '（空）') + ' → ' + (str(f.a.vals[k]) || '（空）'));
+        for (const k of FIELDS) x.vals[k] = f.a.vals[k];
+        x.examNo = f.a.examNo;
+        if (diffs.length) { x.touched = true; plan.updated.push({ name: x.vals.name, no: x.vals.no, diffs }); }
+        else x.touched = true;
+        if (x.phone) plan.phone.push({ name: x.vals.name, no: x.vals.no, matched: true });
+      } else if (x.phone) {
+        plan.phone.push({ name: x.vals.name, no: x.vals.no, matched: false });
+      } else {
+        toCancel.push(x);
+      }
+    }
+
+    // キャンセル移動(元の行は内容を消し、№だけ残す)
+    const cancelRows = [];
+    for (const x of toCancel) {
+      cancelRows.push({ no: x.vals.no, isNew: x.vals.isNew, vals: Object.assign({}, x.vals) });
+      plan.cancelled.push({ name: x.vals.name, no: x.vals.no });
+      for (const k of ['isNew'].concat(FIELDS)) x.vals[k] = '';
+      x.touched = true; x.examNo = ''; x.cleared = true;
+    }
+
+    // 新規追加(最終行の次から)
+    let nextRow = lastUsed + 1;
+    const byRow = new Map(rows.map(x => [x.row, x]));
+    for (const a of uniq) {
+      if (used.has(a)) continue;
+      if (nextRow > dataEnd) throw new Error('集計用紙の№の行数が足りません（' + (dataEnd - hr) + '行まで）。№の行を増やしてから再実行してください。');
+      const x = byRow.get(nextRow);
+      for (const k of FIELDS) x.vals[k] = a.vals[k];
+      x.examNo = a.examNo; x.touched = true; x.added = true;
+      plan.added.push({ name: a.vals.name, no: x.vals.no });
+      nextRow++;
+    }
+
+    // 新規欄の再計算(参加者一覧に名前が無ければ1)
+    for (const x of rows) {
+      if (x.cleared) continue;
+      if (str(x.vals.name) === '') { if (x.touched) x.vals.isNew = ''; continue; }
+      const n = isNewPerson(x.vals.name, x.vals.kana);
+      if (!eq(x.vals.isNew, n)) x.touched = true;
+      x.vals.isNew = n;
+      if (n === 1) plan.newCount++;
+    }
+
+    // 書き込み
+    for (const x of rows) {
+      if (!x.touched) continue;
+      for (const k of ['isNew'].concat(FIELDS)) {
+        const v = x.vals[k];
+        cell(main, x.row, C[k]).value = (v === '' || v == null) ? null : v;
+      }
+    }
+
+    // タイトルや日付の整合
+    let title = '';
+    for (let r = 1; r < hr && !title; r++) for (let c = 1; c <= 4 && !title; c++) { const s = str(val(main, r, c)); if (s.length > 6) title = s; }
+    for (let r = 1; r < hr; r++) for (let c = 1; c <= Math.max(main.columnCount, 1); c++) {
+      if (val(main, r, c) instanceof Date) {
+        const d = new Date(Date.now() + 9 * 3600e3);
+        cell(main, r, c).value = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      }
+    }
+    const ev = uniq.length ? uniq[0] : null;
+    if (ev && ev.date && title) {
+      const m = ev.date.getUTCMonth() + 1, d = ev.date.getUTCDate();
+      if (title.indexOf(m + '月' + d + '日') < 0) plan.warnings.push('集計用紙のタイトル「' + title + '」の日付が、予約者リストの開催日（' + m + '月' + d + '日）と違います');
+    }
+    const startTime = ev && /^\d{3,4}$/.test(ev.start) ? ev.start.padStart(4, '0') : '';
+
+    // キャンセルシート
+    let cws = sheetsOf(wb).find(w => w.name.indexOf(SHEET_CANCEL) >= 0);
+    let cancelNames = new Set();
+    if (cws) {
+      const ct = findTable(cws);
+      if (ct) {
+        for (let r = ct.hr + 1; r <= cws.rowCount; r++) { const n = str(val(cws, r, ct.cols.name)); if (n) cancelNames.add(norm(n)); }
+      }
+    }
+    for (const a of uniq) if (cancelNames.has(a.nameKey)) plan.warnings.push('「' + a.vals.name + '」はキャンセルシートにも名前が残っています（再申込の場合は不要な行を削除してください）');
+    if (cancelRows.length) {
+      if (!cws) cws = createCancelSheet(wb, main, tbl);
+      appendCancel(cws, cancelRows);
+    }
+
+    const ctx = { main, tbl, rows, title, startTime, apps: uniq };
+    plan.total = rows.filter(x => str(x.vals.name) !== '').length;
+    return { plan, ctx };
+  }
+
+  function createCancelSheet(wb, main, tbl) {
+    const ws = wb.addWorksheet(SHEET_CANCEL);
+    ws.getCell(2, 1).value = 'キャンセル';
+    const labs = ['№', '新規', '氏名', 'ふりがな', '性別', '学年', '塾コード', '塾名/教室名', '個別', '都道府県', '市区町村', '在籍小学校'];
+    labs.forEach((l, i) => { const c = ws.getCell(3, i + 1); c.value = l; styleCell(c, true); });
+    [3.1, 3.6, 12.1, 14, 3.6, 3.8, 6.8, 16.8, 5, 8, 10.5, 14].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+    return ws;
+  }
+  function styleCell(c, bold) {
+    c.font = { name: '游ゴシック', size: bold ? 10 : 11, bold: !!bold };
+    c.alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true };
+    const t = { style: 'thin' };
+    c.border = { left: t, right: t, top: t, bottom: t };
+  }
+  function appendCancel(cws, list) {
+    const ct = findTable(cws);
+    const hr = ct ? ct.hr : 3;
+    const cols = ct ? ct.cols : { no: 1, isNew: 2, name: 3, kana: 4, sex: 5, grade: 6, jukuCode: 7, jukuName: 8, kobetsu: 9, pref: 10, city: 11, school: 12 };
+    let r = hr + 1;
+    while (r <= cws.rowCount && str(val(cws, r, cols.name)) !== '') r++;
+    for (const it of list) {
+      for (const k of ['no', 'isNew'].concat(FIELDS)) {
+        if (!cols[k]) continue;
+        const src = k === 'no' ? it.no : k === 'isNew' ? it.isNew : it.vals[k];
+        const c = cell(cws, r, cols[k]);
+        c.value = (src === '' || src == null) ? null : src;
+        if (!(c.border && c.border.left)) styleCell(c, false);
+      }
+      r++;
+    }
+  }
+
+  /* ---------- フリガナ順シート ---------- */
+  function buildSorted(wb, ctx) {
+    const { main, tbl, rows } = ctx;
+    const ws = wb.addWorksheet(SHEET_SORTED);
+    // シート全体を複製(値・数式・書式・結合・列幅・行高)
+    const maxR = main.rowCount, maxC = main.columnCount;
+    for (let r = 1; r <= maxR; r++) {
+      const sr = main.getRow(r), tr = ws.getRow(r);
+      if (sr.height) tr.height = sr.height;
+      for (let c = 1; c <= maxC; c++) {
+        const s = cell(main, r, c), t = cell(ws, r, c);
+        if (s.type === 1) { t.style = clone(s.style); continue; }
+        if (s.type === 6) t.value = { formula: s.formula, result: s.result };
+        else t.value = s.value;
+        t.style = clone(s.style);
+      }
+    }
+    for (let c = 1; c <= maxC; c++) { const w = main.getColumn(c).width; if (w) ws.getColumn(c).width = w; }
+    const merges = (main.model && main.model.merges) || [];
+    merges.forEach(m => { try { ws.mergeCells(m); } catch (e) { /* 無視 */ } });
+    try { if (main.pageSetup) ws.pageSetup = clone(main.pageSetup); } catch (e) { /* 無視 */ }
+
+    // データ行を並べ替え(№は人についてくる。空行は下に残す)
+    const { named, blank } = sortRows(rows);
+    const ordered = named.concat(blank);
+    const C = tbl.cols;
+    ordered.forEach((x, i) => {
+      const r = tbl.hr + 1 + i;
+      for (const k of ['no', 'isNew'].concat(FIELDS)) {
+        const v = x.vals[k];
+        cell(ws, r, C[k]).value = (v === '' || v == null) ? null : v;
+      }
+    });
+    return { ws, ordered: named };
+  }
+
+  /* ---------- 名簿シート ---------- */
+  function buildMeibo(wb, ctx, ordered) {
+    const ws = wb.addWorksheet(SHEET_MEIBO);
+    const widths = [4, 5, 13, 5.5, 16, 8, 9, 5, 5, 8, 18, 12.5, 8, 13, 16];
+    widths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+    const thin = { style: 'thin' };
+    const border = { left: thin, right: thin, top: thin, bottom: thin };
+    const font = (sz, b) => ({ name: '游ゴシック', size: sz, bold: !!b });
+    // タイトル
+    let title = ctx.title || '適性検査型体験会予約者一覧';
+    if (ctx.startTime && title.indexOf('～') < 0) {
+      const t = ctx.startTime.slice(0, 2).replace(/^0/, '') + '：' + ctx.startTime.slice(2);
+      const i = title.indexOf('）');
+      title = i >= 0 ? title.slice(0, i + 1) + t + '～' + title.slice(i + 1) : t + '～' + title;
+    }
+    ws.mergeCells(1, 1, 1, 15);
+    const t1 = ws.getCell(1, 1);
+    t1.value = title; t1.font = font(11); t1.alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true };
+    ws.getRow(1).height = 22.5;
+    const heads = ['№', '新規', '氏名', '', 'ふりがな', '出欠', '受験番号', '性別', '学年', '塾コード', '塾名/教室名', '個別相談', '都道府県', '市区町村', '在籍小学校'];
+    heads.forEach((h, i) => {
+      const c = ws.getCell(2, i + 1);
+      c.value = h || null; c.font = font(10, true); c.border = border;
+      c.alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true };
+    });
+    ws.getRow(2).height = 30.75;
+    const left = new Set([11, 13, 14]);
+    ordered.forEach((x, i) => {
+      const r = 3 + i, v = x.vals;
+      const arr = [v.no, v.isNew, v.name, null, v.kana, null, x.examNo || null, v.sex, v.grade, v.jukuCode, v.jukuName, v.kobetsu, v.pref, v.city, v.school];
+      arr.forEach((a, j) => {
+        const c = ws.getCell(r, j + 1);
+        c.value = (a === '' || a == null) ? null : a;
+        c.font = font(j < 2 ? 10 : 11); c.border = border;
+        c.alignment = { horizontal: left.has(j + 1) ? 'left' : 'center', vertical: 'middle', shrinkToFit: true };
+      });
+      ws.getRow(r).height = 19.15;
+    });
+    // ア・イ・ウ…の見出し(結合)
+    let s = 0;
+    while (s < ordered.length) {
+      const h = kanaHead(ordered[s].vals.kana || ordered[s].vals.name);
+      let e = s;
+      while (e + 1 < ordered.length && kanaHead(ordered[e + 1].vals.kana || ordered[e + 1].vals.name) === h) e++;
+      if (e > s) ws.mergeCells(3 + s, 4, 3 + e, 4);
+      const c = ws.getCell(3 + s, 4);
+      c.value = h || null; c.font = font(11); c.border = border;
+      c.alignment = { horizontal: 'center', vertical: 'middle' };
+      for (let r = 3 + s; r <= 3 + e; r++) ws.getCell(r, 4).border = border;
+      s = e + 1;
+    }
+    ws.pageSetup = {
+      paperSize: 8, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+      margins: { left: 0.315, right: 0.118, top: 0.157, bottom: 0.197, header: 0.315, footer: 0.315 }
+    };
+    ws.views = [{ state: 'frozen', ySplit: 2 }];
+    return ws;
+  }
+
+  /* ---------- ファイル種別の判定 ---------- */
+  function classify(wb) {
+    for (const ws of wb.worksheets) {
+      const heads = [];
+      for (let c = 1; c <= Math.min(ws.columnCount, 60); c++) heads.push(str(val(ws, 1, c)));
+      if (heads.indexOf('イベント申込番号') >= 0) return { role: 'apps', ws };
+      if (heads.indexOf('セイ') >= 0 && heads.indexOf('メイ') >= 0 && heads.indexOf('姓') >= 0) return { role: 'past', ws };
+    }
+    for (const ws of wb.worksheets) if (!isAux(ws.name) && findTable(ws)) return { role: 'sheet', ws };
+    return { role: null };
+  }
+
+  function orderRows(ctx) { return sortRows(ctx.rows).named; }
+  return { process, orderRows, buildSorted, buildMeibo, classify, readApps, readParticipants, cmpKana, kanaHead, findTable, norm, SHEET_SORTED, SHEET_MEIBO };
+})();
+if (typeof module !== 'undefined') module.exports = Core;
+
+</script>
+<script>
+(function(){
+  var ROLES=[['apps','予約者リスト'],['sheet','集計用紙'],['past','参加者一覧']];
+  var bufs={apps:null,sheet:null,past:null}, names={apps:'',sheet:'',past:''};
+  var $=function(id){return document.getElementById(id)};
+  var busy=false, pending=false, ready=false, blobReady=null;
+  var dlP=(window.claude&&window.claude.use)?window.claude.use('downloads').catch(function(){return null}):Promise.resolve(null);
+
+  function renderSlots(){
+    var h=$('slots'); h.textContent='';
+    ROLES.forEach(function(r){
+      var d=document.createElement('div'); d.className='slot'+(bufs[r[0]]?' ok':'');
+      var k=document.createElement('div'); k.className='k'; k.textContent=r[1]+(bufs[r[0]]?'　読み込み済み':'');
+      var v=document.createElement('div'); v.className='v'; v.textContent=bufs[r[0]]?names[r[0]]:'未投入';
+      d.appendChild(k); d.appendChild(v); h.appendChild(d);
+    });
+  }
+  function note(box,cls,text){var d=document.createElement('div');d.className='note '+cls;d.textContent=text;box.appendChild(d)}
+  async function load(buf){var wb=new ExcelJS.Workbook(); await wb.xlsx.load(buf.slice(0)); return wb}
+
+  async function handle(files){
+    var box=$('fileNotes'); box.textContent='';
+    for(var i=0;i<files.length;i++){
+      var f=files[i];
+      if(!/\.xlsx$/i.test(f.name)){note(box,'err','「'+f.name+'」はxlsx形式ではないため読み込めません。');continue}
+      try{
+        var buf=await f.arrayBuffer(); var wb=await load(buf); var c=Core.classify(wb);
+        if(!c.role){note(box,'err','「'+f.name+'」は予約者リスト・集計用紙・参加者一覧のどれにも当てはまりませんでした。');continue}
+        bufs[c.role]=buf; names[c.role]=f.name;
+      }catch(e){note(box,'err','「'+f.name+'」を開けませんでした。'+(e&&e.message?e.message:''))}
+    }
+    renderSlots(); run();
+  }
+
+  async function build(opt){
+    var wbA=await load(bufs.apps), wbS=await load(bufs.sheet), wbP=await load(bufs.past);
+    var A=Core.readApps(Core.classify(wbA).ws,opt.spacing);
+    var P=Core.readParticipants(Core.classify(wbP).ws);
+    var res=Core.process(wbS,A.apps,P,{});
+    res.plan.skipped=A.skipped; res.plan.pastCount=P.count;
+    var ordered=null;
+    if(opt.sorted){ordered=Core.buildSorted(wbS,res.ctx).ordered}
+    if(opt.meibo){Core.buildMeibo(wbS,res.ctx,ordered||Core.orderRows(res.ctx))}
+    wbS.calcProperties=wbS.calcProperties||{}; wbS.calcProperties.fullCalcOnLoad=true;
+    return {wb:wbS,plan:res.plan};
+  }
+  function opts(){return {sorted:$('optSorted').checked,meibo:$('optMeibo').checked,spacing:$('spacing').value}}
+
+  async function run(){
+    var ok=bufs.apps&&bufs.sheet&&bufs.past;
+    $('result').hidden=!ok; ready=false;
+    $('save').disabled=true;
+    if(!ok){
+      var miss=ROLES.filter(function(r){return !bufs[r[0]]}).map(function(r){return r[1]});
+      $('saveMsg').textContent=miss.length?'あと「'+miss.join('」「')+'」が必要です。':'3つのファイルが揃うと保存できます。';
+      return;
+    }
+    if(busy){pending=true;return}
+    busy=true; $('saveMsg').textContent='集計しています…';
+    try{
+      var r=await build(opts()); showPlan(r.plan);
+      var out=await r.wb.xlsx.writeBuffer();
+      blobReady=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); ready=true;
+      $('save').disabled=false; $('saveMsg').textContent='内容を確認して保存してください。';
+    }catch(e){
+      blobReady=null; $('result').hidden=false; $('stats').textContent=''; $('chg').textContent=''; var w=$('warnings'); w.textContent='';
+      note(w,'err',e&&e.message?e.message:'集計に失敗しました。');
+      $('saveMsg').textContent='';
+    }
+    busy=false; if(pending){pending=false;run()}
+  }
+
+  function showPlan(p){
+    var st=$('stats'); st.textContent='';
+    [['予約者',p.total],['新規追加',p.added.length],['内容を更新',p.updated.length],['キャンセルへ移動',p.cancelled.length],['新規欄が1の人',p.newCount]].forEach(function(x){
+      var d=document.createElement('div'); d.className='stat';
+      var b=document.createElement('b'); b.textContent=x[1]; var s=document.createElement('span'); s.textContent=x[0];
+      d.appendChild(b); d.appendChild(s); st.appendChild(d);
+    });
+    var w=$('warnings'); w.textContent='';
+    p.warnings.forEach(function(t){note(w,'warn',t)});
+    if(p.skipped&&p.skipped.length) note(w,'warn','予約者リストでキャンセル済みの '+p.skipped.length+' 件は集計に入れていません（'+p.skipped.map(function(x){return x.name}).join('、')+'）。');
+    var c=$('chg'); c.textContent='';
+    function sec(title,items,fmt){
+      if(!items.length)return;
+      var h=document.createElement('h3'); h.textContent=title+'（'+items.length+'）'; c.appendChild(h);
+      var u=document.createElement('ul'); items.forEach(function(it){var li=document.createElement('li'); li.textContent=fmt(it); u.appendChild(li)}); c.appendChild(u);
+    }
+    sec('新規追加',p.added,function(x){return '№'+x.no+'　'+x.name});
+    sec('内容を更新',p.updated,function(x){return '№'+x.no+'　'+x.name+'　'+x.diffs.join(' / ')});
+    sec('キャンセルへ移動',p.cancelled,function(x){return '№'+x.no+'　'+x.name});
+    sec('№が「電話」で残した行',p.phone,function(x){return x.name+(x.matched?'（予約者リストにもあり）':'（予約者リストになし）')});
+    if(!c.childNodes.length){var m=document.createElement('p');m.className='msg';m.textContent='変更はありません。';c.appendChild(m)}
+  }
+
+  async function save(){
+    if(!ready)return;
+    var msg=$('saveMsg'); $('save').disabled=true; msg.textContent='ファイルを作成しています…';
+    try{
+      var blob=blobReady;
+      var base=(names.sheet||'集計').replace(/\.xlsx$/i,'').replace(/_集計済$/,'');
+      var dl=await dlP;
+      if(!dl&&window.claude&&window.claude.use){try{dl=await window.claude.use('downloads')}catch(x){dl=null}}
+      if(dl){await dl.save({filename:base+'_集計済.xlsx',data:blob})}
+      else{var u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=base+'_集計済.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000)}
+      msg.textContent='保存しました。';
+    }catch(e){
+      msg.textContent=(e&&e.code==='declined')?'保存を取りやめました。':'保存できませんでした。'+(e&&e.code?'['+e.code+'] ':'')+(e&&e.message?e.message:String(e));
+    }
+    $('save').disabled=false;
+  }
+
+  var drop=$('drop'), inp=$('file');
+  drop.addEventListener('click',function(){inp.click()});
+  drop.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();inp.click()}});
+  inp.addEventListener('change',function(){handle(Array.prototype.slice.call(inp.files));inp.value=''});
+  ['dragenter','dragover'].forEach(function(n){drop.addEventListener(n,function(e){e.preventDefault();drop.classList.add('over')})});
+  ['dragleave','drop'].forEach(function(n){drop.addEventListener(n,function(e){e.preventDefault();drop.classList.remove('over')})});
+  drop.addEventListener('drop',function(e){handle(Array.prototype.slice.call(e.dataTransfer.files))});
+  window.addEventListener('dragover',function(e){e.preventDefault()});
+  window.addEventListener('drop',function(e){e.preventDefault()});
+  ['optSorted','optMeibo','spacing'].forEach(function(id){$(id).addEventListener('change',run)});
+  $('save').addEventListener('click',save);
+  renderSlots();
+})();
+</script>
+
+</body></html>
