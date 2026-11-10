@@ -50,6 +50,7 @@ select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6
 .note{border-radius:8px;padding:8px 12px;font-size:13.5px;overflow-wrap:anywhere}
 .note.warn{background:var(--warn-soft);color:var(--warn)}
 .note.err{background:var(--err-soft);color:var(--err)}
+.note.ok{background:var(--ok-soft);color:var(--ok)}
 details{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
 summary{cursor:pointer;font-weight:700;font-size:14px}
 .chg h3{font-size:13px;margin:14px 0 4px;color:var(--muted)}
@@ -722,16 +723,16 @@ if (typeof module !== 'undefined') module.exports = Core;
     return ox.replace(/<sheetData\b/,xml+'<sheetData');
   }
   async function patchLayout(outBuf,srcBuf,name,cancelName){
-    patchLayout.err='';
+    patchLayout.err=''; patchLayout.info='';
     try{
-      var J=window.JSZip; if(!J||!name) return outBuf;
+      var J=window.JSZip; if(!J){patchLayout.err='JSZip（zip処理の部品）が読み込まれていません';return outBuf} if(!name) return outBuf;
       var src=await J.loadAsync(srcBuf), out=await J.loadAsync(outBuf);
       var pairs=[[name,name],[name,'フリガナ順']];
       if(cancelName) pairs.push([cancelName,cancelName]);
       var changed=false;
       for(var k=0;k<pairs.length;k++){
         var sp=await sheetPath(src,pairs[k][0]), op=await sheetPath(out,pairs[k][1]);
-        if(!sp||!op||!src.file(sp)||!out.file(op)) continue;
+        if(!sp||!op||!src.file(sp)||!out.file(op)){ if(k===0) patchLayout.err='シート「'+pairs[k][0]+'」の場所を特定できません'; continue; }
         var sx=await src.file(sp).async('string'), ox=await out.file(op).async('string');
         var hts={}, m, re=/<row\b[^>]*>/g;
         while((m=re.exec(sx))){
@@ -745,6 +746,7 @@ if (typeof module !== 'undefined') module.exports = Core;
           return '<row'+a+' ht="'+hts[r[1]]+'" customHeight="1"'+sl+'>';
         });
         ox=patchCols(sx,ox);
+        if(k===0) patchLayout.info='元の集計用紙の列幅'+(sx.match(/<col\b/g)||[]).length+'件・行の高さ'+Object.keys(hts).length+'件を反映しました';
         out.file(op,ox); changed=true;
       }
       if(!changed) return outBuf;
@@ -783,6 +785,7 @@ if (typeof module !== 'undefined') module.exports = Core;
       $('saveMsg').textContent='列幅・行の高さを調整しています…';
       var raw=out;
       out=await Promise.race([patchLayout(raw,bufs.sheet,r.plan.mainName,r.plan.cancelName),new Promise(function(res){setTimeout(function(){patchLayout.err='時間切れ';res(raw)},8000)})]);
+      if(patchLayout.info) note($('warnings'),'ok',patchLayout.info);
       if(patchLayout.err) note($('warnings'),'warn','列幅・行の高さを元に戻す処理に失敗しました（'+patchLayout.err+'）。');
       blobReady=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); ready=true;
       $('save').disabled=false; $('saveMsg').textContent='内容を確認して保存してください。';
