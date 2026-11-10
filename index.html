@@ -88,6 +88,8 @@ summary{cursor:pointer;font-weight:700;font-size:14px}
     <div class="opts">
       <label><input type="checkbox" id="optSorted"><span>フリガナ順シートを出す<small>集計用紙の申込者シートを並べ替えた別シートです。人数カウント欄もそのまま使えます。</small></span></label>
       <label><input type="checkbox" id="optMeibo"><span>名簿シートを出す<small>フリガナ順に並べた名簿の形式です。受験番号はイベント申込番号のハイフン以下5桁です。</small></span></label>
+      <div class="row"><label for="asOf" class="msg">集計用紙の一番上の「現在」の日付</label>
+        <input type="date" id="asOf" aria-label="現在の日付"><button type="button" class="btn ghost" id="asOfToday">今日にする</button></div>
       <div class="row"><span class="msg">氏名・ふりがなの姓名の間</span>
         <select id="spacing" aria-label="姓名の間"><option value="full">全角スペース</option><option value="half">半角スペース</option><option value="none">なし</option></select></div>
     </div>
@@ -113,6 +115,7 @@ summary{cursor:pointer;font-weight:700;font-size:14px}
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 /* 適性検査型体験会 予約者集計 コア処理 (ExcelJS互換のワークシートAPIだけを使用) */
 const Core = (function () {
@@ -422,7 +425,10 @@ const Core = (function () {
     for (let r = 1; r < hr; r++) for (let c = 1; c <= Math.max(main.columnCount, 1); c++) {
       if (val(main, r, c) instanceof Date) {
         const d = new Date(Date.now() + 9 * 3600e3);
-        cell(main, r, c).value = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+        let y = d.getUTCFullYear(), mo = d.getUTCMonth(), da = d.getUTCDate();
+        const am = /^(\d{4})-(\d{2})-(\d{2})$/.exec(opts.asOf || '');
+        if (am) { y = +am[1]; mo = +am[2] - 1; da = +am[3]; }
+        cell(main, r, c).value = new Date(Date.UTC(y, mo, da));
       }
     }
     const ev = uniq.length ? uniq[0] : null;
@@ -448,6 +454,7 @@ const Core = (function () {
     }
 
     const ctx = { main, tbl, rows, title, startTime, apps: uniq };
+    plan.mainName = main.name;
     plan.total = rows.filter(x => str(x.vals.name) !== '').length;
     return { plan, ctx };
   }
@@ -631,11 +638,86 @@ if (typeof module !== 'undefined') module.exports = Core;
     renderSlots(); run();
   }
 
+  /* ExcelJSの読み書きで行の高さが変わっても、元の集計用紙の行の高さに戻す */
+  async function sheetPath(zip,name){
+    var wbx=zip.file('xl/workbook.xml'), rel=zip.file('xl/_rels/workbook.xml.rels');
+    if(!wbx||!rel) return null;
+    var w=await wbx.async('string'), rl=await rel.async('string');
+    var esc=function(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')};
+    var rid=null, m, re=/<sheet\b[^>]*>/g;
+    while((m=re.exec(w))){
+      var n=/\bname="([^"]*)"/.exec(m[0]), i=/\br:id="([^"]*)"/.exec(m[0])||/\bid="([^"]*)"/.exec(m[0]);
+      if(n&&i&&(n[1]===name||n[1]===esc(name))){rid=i[1];break}
+    }
+    if(!rid) return null;
+    var re2=/<Relationship\b[^>]*>/g, t=null;
+    while((m=re2.exec(rl))){
+      var id=/\bId="([^"]*)"/.exec(m[0]), tg=/\bTarget="([^"]*)"/.exec(m[0]);
+      if(id&&tg&&id[1]===rid){t=tg[1];break}
+    }
+    if(!t) return null;
+    t=t.replace(/^\//,''); if(t.indexOf('xl/')!==0) t='xl/'+t;
+    return t;
+  }
+  function patchCols(sx,ox){
+    var sm=/<cols>([\s\S]*?)<\/cols>/.exec(sx); if(!sm) return ox;
+    var widths={}, t, re=/<col\b[^>]*\/?>/g;
+    while((t=re.exec(sm[1]))){
+      var mn=/\bmin="(\d+)"/.exec(t[0]), mx=/\bmax="(\d+)"/.exec(t[0]), w=/\bwidth="([\d.]+)"/.exec(t[0]);
+      if(!mn||!mx||!w) continue;
+      for(var n=+mn[1];n<=Math.min(+mx[1],60);n++) widths[n]=w[1];
+    }
+    var om=/<cols>([\s\S]*?)<\/cols>/.exec(ox), items=[];
+    if(om){
+      var re2=/<col\b[^>]*\/?>/g;
+      while((t=re2.exec(om[1]))){
+        var a=/\bmin="(\d+)"/.exec(t[0]), b=/\bmax="(\d+)"/.exec(t[0]);
+        if(a&&b) items.push({min:+a[1],max:+b[1],rest:t[0].slice(4).replace(/\s(min|max|width|customWidth)="[^"]*"/g,''),w:(/\bwidth="([\d.]+)"/.exec(t[0])||[])[1]});
+      }
+    }
+    var out=[];
+    for(var n=1;n<=60;n++){
+      var it=items.filter(function(i){return i.min<=n&&n<=i.max})[0];
+      var w=widths[n]||(it&&it.w);
+      if(!w) continue;
+      out.push('<col min="'+n+'" max="'+n+'" width="'+w+'" customWidth="1"'+(it?it.rest:'/>'));
+    }
+    items.forEach(function(i){
+      if(i.max>60){var s=Math.max(i.min,61);out.push('<col min="'+s+'" max="'+i.max+'"'+(i.w?' width="'+i.w+'" customWidth="1"':'')+i.rest)}
+    });
+    var xml='<cols>'+out.join('')+'</cols>';
+    if(om) return ox.replace(/<cols>[\s\S]*?<\/cols>/,xml);
+    return ox.replace(/<sheetData\b/,xml+'<sheetData');
+  }
+  async function patchLayout(outBuf,srcBuf,name){
+    try{
+      var J=window.JSZip; if(!J||!name) return outBuf;
+      var src=await J.loadAsync(srcBuf), out=await J.loadAsync(outBuf);
+      var sp=await sheetPath(src,name), op=await sheetPath(out,name);
+      if(!sp||!op||!src.file(sp)||!out.file(op)) return outBuf;
+      var sx=await src.file(sp).async('string'), ox=await out.file(op).async('string');
+      var hts={}, m, re=/<row\b[^>]*>/g;
+      while((m=re.exec(sx))){
+        var r=/\br="(\d+)"/.exec(m[0]), h=/\bht="([\d.]+)"/.exec(m[0]);
+        if(r&&h) hts[r[1]]=h[1];
+      }
+      ox=ox.replace(/<row\b([^>]*?)(\/?)>/g,function(mm,a,sl){
+        var r=/\br="(\d+)"/.exec(a);
+        if(!r||!hts[r[1]]) return mm;
+        a=a.replace(/\s(ht|customHeight)="[^"]*"/g,'');
+        return '<row'+a+' ht="'+hts[r[1]]+'" customHeight="1"'+sl+'>';
+      });
+      ox=patchCols(sx,ox);
+      out.file(op,ox);
+      return await out.generateAsync({type:'arraybuffer',compression:'DEFLATE'});
+    }catch(e){return outBuf}
+  }
+
   async function build(opt){
     var wbA=await load(bufs.apps), wbS=await load(bufs.sheet), wbP=await load(bufs.past);
     var A=Core.readApps(Core.classify(wbA).ws,opt.spacing);
     var P=Core.readParticipants(Core.classify(wbP).ws);
-    var res=Core.process(wbS,A.apps,P,{});
+    var res=Core.process(wbS,A.apps,P,{asOf:opt.asOf});
     res.plan.skipped=A.skipped; res.plan.pastCount=P.count;
     var ordered=null;
     if(opt.sorted){ordered=Core.buildSorted(wbS,res.ctx).ordered}
@@ -643,7 +725,7 @@ if (typeof module !== 'undefined') module.exports = Core;
     wbS.calcProperties=wbS.calcProperties||{}; wbS.calcProperties.fullCalcOnLoad=true;
     return {wb:wbS,plan:res.plan};
   }
-  function opts(){return {sorted:$('optSorted').checked,meibo:$('optMeibo').checked,spacing:$('spacing').value}}
+  function opts(){return {sorted:$('optSorted').checked,meibo:$('optMeibo').checked,spacing:$('spacing').value,asOf:$('asOf').value}}
 
   async function run(){
     var ok=bufs.apps&&bufs.sheet&&bufs.past;
@@ -659,6 +741,7 @@ if (typeof module !== 'undefined') module.exports = Core;
     try{
       var r=await build(opts()); showPlan(r.plan);
       var out=await r.wb.xlsx.writeBuffer();
+      out=await patchLayout(out,bufs.sheet,r.plan.mainName);
       blobReady=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); ready=true;
       $('save').disabled=false; $('saveMsg').textContent='内容を確認して保存してください。';
     }catch(e){
@@ -718,7 +801,10 @@ if (typeof module !== 'undefined') module.exports = Core;
   drop.addEventListener('drop',function(e){handle(Array.prototype.slice.call(e.dataTransfer.files))});
   window.addEventListener('dragover',function(e){e.preventDefault()});
   window.addEventListener('drop',function(e){e.preventDefault()});
-  ['optSorted','optMeibo','spacing'].forEach(function(id){$(id).addEventListener('change',run)});
+  ['optSorted','optMeibo','spacing','asOf'].forEach(function(id){$(id).addEventListener('change',run)});
+  function today(){var d=new Date(Date.now()+9*3600e3);return d.toISOString().slice(0,10)}
+  $('asOf').value=today();
+  $('asOfToday').addEventListener('click',function(){$('asOf').value=today();run()});
   $('save').addEventListener('click',save);
   renderSlots();
 })();
