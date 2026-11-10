@@ -1,5 +1,4 @@
-<!doctype html>
-<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>適性検査型体験会 予約者集計</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
@@ -64,7 +63,6 @@ summary{cursor:pointer;font-weight:700;font-size:14px}
 @media (prefers-reduced-motion:reduce){#drop{transition:none}}
 </style>
 
-</head><body>
 <div class="wrap">
   <header>
     <h1>適性検査型体験会 予約者集計</h1>
@@ -440,6 +438,7 @@ const Core = (function () {
 
     // キャンセルシート
     let cws = sheetsOf(wb).find(w => w.name.indexOf(SHEET_CANCEL) >= 0);
+    const srcCancelName = cws ? cws.name : '';
     let cancelNames = new Set();
     if (cws) {
       const ct = findTable(cws);
@@ -455,6 +454,7 @@ const Core = (function () {
 
     const ctx = { main, tbl, rows, title, startTime, apps: uniq };
     plan.mainName = main.name;
+    plan.cancelName = srcCancelName;
     plan.total = rows.filter(x => str(x.vals.name) !== '').length;
     return { plan, ctx };
   }
@@ -689,30 +689,36 @@ if (typeof module !== 'undefined') module.exports = Core;
     if(om) return ox.replace(/<cols>[\s\S]*?<\/cols>/,xml);
     return ox.replace(/<sheetData\b/,xml+'<sheetData');
   }
-  async function patchLayout(outBuf,srcBuf,name){
+  async function patchLayout(outBuf,srcBuf,name,cancelName){
+    patchLayout.err='';
     try{
       var J=window.JSZip; if(!J||!name) return outBuf;
       var src=await J.loadAsync(srcBuf), out=await J.loadAsync(outBuf);
-      var sp=await sheetPath(src,name), op=await sheetPath(out,name);
-      if(!sp||!op||!src.file(sp)||!out.file(op)) return outBuf;
-      var sx=await src.file(sp).async('string'), ox=await out.file(op).async('string');
-      var hts={}, m, re=/<row\b[^>]*>/g;
-      while((m=re.exec(sx))){
-        var r=/\br="(\d+)"/.exec(m[0]), h=/\bht="([\d.]+)"/.exec(m[0]);
-        if(r&&h) hts[r[1]]=h[1];
+      var pairs=[[name,name],[name,'フリガナ順']];
+      if(cancelName) pairs.push([cancelName,cancelName]);
+      var changed=false;
+      for(var k=0;k<pairs.length;k++){
+        var sp=await sheetPath(src,pairs[k][0]), op=await sheetPath(out,pairs[k][1]);
+        if(!sp||!op||!src.file(sp)||!out.file(op)) continue;
+        var sx=await src.file(sp).async('string'), ox=await out.file(op).async('string');
+        var hts={}, m, re=/<row\b[^>]*>/g;
+        while((m=re.exec(sx))){
+          var r=/\br="(\d+)"/.exec(m[0]), h=/\bht="([\d.]+)"/.exec(m[0]);
+          if(r&&h) hts[r[1]]=h[1];
+        }
+        ox=ox.replace(/<row\b([^>]*?)(\/?)>/g,function(mm,a,sl){
+          var r=/\br="(\d+)"/.exec(a);
+          if(!r||!hts[r[1]]) return mm;
+          a=a.replace(/\s(ht|customHeight)="[^"]*"/g,'');
+          return '<row'+a+' ht="'+hts[r[1]]+'" customHeight="1"'+sl+'>';
+        });
+        ox=patchCols(sx,ox);
+        out.file(op,ox); changed=true;
       }
-      ox=ox.replace(/<row\b([^>]*?)(\/?)>/g,function(mm,a,sl){
-        var r=/\br="(\d+)"/.exec(a);
-        if(!r||!hts[r[1]]) return mm;
-        a=a.replace(/\s(ht|customHeight)="[^"]*"/g,'');
-        return '<row'+a+' ht="'+hts[r[1]]+'" customHeight="1"'+sl+'>';
-      });
-      ox=patchCols(sx,ox);
-      out.file(op,ox);
+      if(!changed) return outBuf;
       return await out.generateAsync({type:'arraybuffer',compression:'DEFLATE'});
-    }catch(e){return outBuf}
+    }catch(e){patchLayout.err=String(e&&e.message||e);return outBuf}
   }
-
   async function build(opt){
     var wbA=await load(bufs.apps), wbS=await load(bufs.sheet), wbP=await load(bufs.past);
     var A=Core.readApps(Core.classify(wbA).ws,opt.spacing);
@@ -741,7 +747,8 @@ if (typeof module !== 'undefined') module.exports = Core;
     try{
       var r=await build(opts()); showPlan(r.plan);
       var out=await r.wb.xlsx.writeBuffer();
-      out=await patchLayout(out,bufs.sheet,r.plan.mainName);
+      out=await patchLayout(out,bufs.sheet,r.plan.mainName,r.plan.cancelName);
+      if(patchLayout.err) note($('warnings'),'warn','列幅・行の高さを元に戻す処理に失敗しました（'+patchLayout.err+'）。');
       blobReady=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); ready=true;
       $('save').disabled=false; $('saveMsg').textContent='内容を確認して保存してください。';
     }catch(e){
@@ -783,8 +790,8 @@ if (typeof module !== 'undefined') module.exports = Core;
       var base=(names.sheet||'集計').replace(/\.xlsx$/i,'').replace(/_集計済$/,'');
       var dl=await dlP;
       if(!dl&&window.claude&&window.claude.use){try{dl=await window.claude.use('downloads')}catch(x){dl=null}}
-      if(dl){await dl.save({filename:base+'_集計済.xlsx',data:blob})}
-      else{var u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=base+'_集計済.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000)}
+      if(!dl){msg.textContent='この画面ではファイルを保存できません。Claudeアプリまたはブラウザで開き直してください。';$('save').disabled=false;return}
+      await dl.save({filename:base+'_集計済.xlsx',data:blob});
       msg.textContent='保存しました。';
     }catch(e){
       msg.textContent=(e&&e.code==='declined')?'保存を取りやめました。':'保存できませんでした。'+(e&&e.code?'['+e.code+'] ':'')+(e&&e.message?e.message:String(e));
