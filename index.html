@@ -746,8 +746,11 @@ if (typeof module !== 'undefined') module.exports = Core;
     busy=true; $('saveMsg').textContent='集計しています…';
     try{
       var r=await build(opts()); showPlan(r.plan);
+      $('saveMsg').textContent='Excelを作成しています…';
       var out=await r.wb.xlsx.writeBuffer();
-      out=await patchLayout(out,bufs.sheet,r.plan.mainName,r.plan.cancelName);
+      $('saveMsg').textContent='列幅・行の高さを調整しています…';
+      var raw=out;
+      out=await Promise.race([patchLayout(raw,bufs.sheet,r.plan.mainName,r.plan.cancelName),new Promise(function(res){setTimeout(function(){patchLayout.err='時間切れ';res(raw)},8000)})]);
       if(patchLayout.err) note($('warnings'),'warn','列幅・行の高さを元に戻す処理に失敗しました（'+patchLayout.err+'）。');
       blobReady=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); ready=true;
       $('save').disabled=false; $('saveMsg').textContent='内容を確認して保存してください。';
